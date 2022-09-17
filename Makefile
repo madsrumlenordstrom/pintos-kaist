@@ -7,6 +7,9 @@ all::
 
 CLEAN_SUBDIRS = $(BUILD_SUBDIRS)
 
+lsp-file::
+	cd threads; make
+
 clean::
 	for d in $(CLEAN_SUBDIRS); do $(MAKE) -C $$d $@; done
 	rm -f TAGS tags
