@@ -91,6 +91,7 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+    int64_t wakeup_tick;                /* The on which thread should wake up */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -109,6 +110,9 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 };
 
+/* List containing sleeping threads */
+extern struct list sleep_list;
+
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -118,6 +122,7 @@ void thread_init (void);
 void thread_start (void);
 
 void thread_tick (void);
+bool thread_wakeup_is_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
@@ -132,6 +137,7 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+void thread_sleep(int64_t ticks);
 
 int thread_get_priority (void);
 void thread_set_priority (int);

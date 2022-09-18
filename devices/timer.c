@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <round.h>
 #include <stdio.h>
+#include "list.h"
 #include "threads/interrupt.h"
 #include "threads/io.h"
 #include "threads/synch.h"
@@ -90,11 +91,24 @@ timer_elapsed (int64_t then) {
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+    
+    if (ticks <= 0) {
+        return;
+    }
+    
+    enum intr_level old_level;
+
+    old_level = intr_disable ();
+
+	int64_t start = timer_ticks ();
+
+    if (timer_elapsed (start) < ticks) {
+        thread_sleep(start + ticks);
+    }
+
+    intr_set_level (old_level);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -126,6 +140,20 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+
+    struct thread *t;
+    while (!(list_empty(&sleep_list))) {
+        t = list_entry(list_front(&sleep_list), struct thread, elem); 
+
+        // Check if any threads are ready to wakeup
+        if (t->wakeup_tick > ticks) {
+            break;
+        }
+        
+        // Remove from sleep list and put on ready list
+        list_remove(list_front(&sleep_list));
+        thread_unblock(t);
+    }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

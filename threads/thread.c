@@ -4,6 +4,8 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "list.h"
+#include "stdbool.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -28,6 +30,8 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -44,6 +48,7 @@ static struct list destruction_req;
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
+static long long min_local_tick;/* Minimum local tick in sleep_list */
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
@@ -108,6 +113,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+    list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -152,6 +158,14 @@ thread_tick (void) {
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
 		intr_yield_on_return ();
+}
+
+/* Comparison of the wakeup ticks of two threads */
+bool
+thread_wakeup_is_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+  struct thread *ta = list_entry (a, struct thread, elem);
+  struct thread *tb = list_entry (b, struct thread, elem);
+  return ta->wakeup_tick < tb->wakeup_tick;
 }
 
 /* Prints thread statistics. */
@@ -308,6 +322,22 @@ thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+/* Puts the thread to sleep until global tick is at ticks */
+void thread_sleep(int64_t ticks)
+{
+    struct thread *curr = thread_current();
+    enum intr_level old_level;
+
+    old_level = intr_disable();
+
+    if (curr != idle_thread) {
+        curr->wakeup_tick = ticks;
+        list_insert_ordered(&sleep_list, &curr->elem, thread_wakeup_is_less, NULL);
+        thread_block();
+    }
+    intr_set_level(old_level);
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
@@ -409,6 +439,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+    t->wakeup_tick = 0; // default value
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
